@@ -2,7 +2,7 @@
   "name": "game-localization-plugin",
   "displayName": "Game Localization & Text Engineering (EN/JA -> RU)",
   "description": "Professional game localization toolkit for English and Japanese to Russian translation, glossary curation, version comparative analysis, and bytecode tag QA.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "suggestedPrompts": [
     "Translate this game dialogue script from Japanese to Russian preserving tags and character voices",
     "Compare the Japanese script against official English release and find cut or altered dialogue",

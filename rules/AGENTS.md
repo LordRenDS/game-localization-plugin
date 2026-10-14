@@ -230,6 +230,18 @@ When `%s` represents an item, spell, or hero with dynamic gender (masculine, fem
 - Hard line breaks `\n` and tab characters `\t` must be preserved exactly as configured by the engine.
 - Trailing spaces, leading spaces, and double space dividers often serve as sprite padding in retro games; never strip them indiscriminately.
 
+### 4.4 Dynamic Variable Tokens & VWF Budgeting (nds-romhacking-plugin v1.1.0+ Synergy)
+
+When games insert runtime player names, stats, items, or locations via script tokens (e.g. `{HERO_NAME}`, `{PLAYER_NAME}`, `{TARGET}`, `{VARIABLE}`, `{ITEM_NAME}`, `{LOCATION}`, `{VALUE}`, `{NUMBER}`, `{HERO}`, `{PLAYER}`, `{VAR_1}`, `{VAR_2}`, `{NAME 1}`, `{NAME 2}`), these tokens are NOT zero-width formatting codes:
+
+- **Nominal Character & Pixel Budget Reservation**:
+  - In `scripts/l10n_validator.py`, all standard variable tokens in `DEFAULT_VARIABLE_TOKENS` (or customized via `--var-tokens`) reserve a configurable nominal character budget (`--var-len`, default: **8 characters**).
+  - Never strip variable tokens to zero width during layout checks. A string like `"Привет, {HERO_NAME}!"` consumes $8 \text{ (base)} + 8 \text{ (token)} + 2 \text{ (punct)} = 18$ characters in layout calculations.
+  - In proportional VWF engines (such as NDS NFTR fonts managed by `nds-romhacking-plugin`), tokens correspond to fixed nominal pixel width reservations (e.g., `DEFAULT_HERO_NAME_WIDTH_PX = 30-48px`), preventing dialogue box text clipping when the player chooses an 8-character Cyrillic hero name.
+- **Generic NDS Binary Container Flow**:
+  - In modern ROM hacking pipelines (`nds-romhacking-plugin` v1.1.0+), game text is stored in generic multi-language binary containers supporting arbitrary language counts (`lang_count`, from 1 to $N$) and dynamic text entry delimiters (e.g. `\x02` or `\x00`).
+  - When round-tripping localized dialogue dumps through the L10N QA validator, ensure all entries preserve delimiter semantics and variable token parity across all active language slots.
+
 ---
 
 ## 5. Layout Budget, Line Constraints & Visual Typography

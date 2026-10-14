@@ -76,6 +76,21 @@ Different gaming platforms impose strict physical boundaries on dialogue windows
 > [!IMPORTANT]
 > **VWF Cyrillic Glyph Expansion**: In proportional fonts, wide Russian letters (`Ж`, `Ш`, `Щ`, `Ы`, `Ю`, `Ф`, `М`) consume 8–12 pixels compared to 3–5 pixels for Latin `i`, `l`, `t`. When calculating `--max-len`, budget conservatively (e.g. 32 characters for Russian where English permitted 36).
 
+### Dynamic Variable Tokens & VWF Budgeting (`DEFAULT_VARIABLE_TOKENS`)
+
+In synergy with **`nds-romhacking-plugin` v1.1.0+**, runtime variables substituted by the game engine (hero names, quantities, locations, item names) must **never** be stripped as zero-width control codes:
+
+- **Standard Token Set (`DEFAULT_VARIABLE_TOKENS`)**:
+  `{HERO_NAME}`, `{PLAYER_NAME}`, `{TARGET}`, `{VARIABLE}`, `{ITEM_NAME}`, `{LOCATION}`, `{VALUE}`, `{NUMBER}`, `{HERO}`, `{PLAYER}`, `{VAR_1}`, `{VAR_2}`, `{NAME 1}`, `{NAME 2}`.
+- **Nominal Character Reservation (`--var-len`)**:
+  By default, `scripts/l10n_validator.py` budgets **8 characters** (`--var-len 8`) for every variable token encountered, replacing it with a placeholder during line length validation. Set `--var-len 0` only when intentionally testing zero-width baseline strings.
+- **Custom Project Tokens (`--var-tokens`)**:
+  Additional project-specific tokens can be budgeted via `--var-tokens "{NPC_NAME},{SUMMON}"`.
+- **Pixel Budgeting in VWF Engines**:
+  When interfacing with Nintendo DS proportional fonts (NFTR), nominal character reservations map to safe pixel advance envelopes (e.g., 30–48px for hero names), preventing runtime dialogue box clipping when players enter long Cyrillic names.
+- **Generic NDS Binary Container Flow**:
+  In modern multi-game ROM hacking pipelines (`nds-romhacking-plugin` v1.1.0+), scripts are extracted and reinserted into generic binary text containers with arbitrary language counts (`lang_count` $\ge 1$) and dynamic entry delimiters (`\x02` or `\x00`). Pre-flight validation guarantees that localized Russian lines adhere to both layout budgets and tag/delimiter integrity across all binary container slots.
+
 ---
 
 ## Step-by-Step QA Execution Procedure
@@ -96,7 +111,19 @@ python scripts/l10n_validator.py `
   --source "data/dialogue_en.json" `
   --target "data/dialogue_ru.json" `
   --max-len 36 `
-  --max-lines 4
+  --max-lines 4 `
+  --var-len 8
+```
+
+#### Validation with Custom Variable Tokens
+```powershell
+python scripts/l10n_validator.py `
+  --source "data/dialogue_en.json" `
+  --target "data/dialogue_ru.json" `
+  --max-len 34 `
+  --max-lines 3 `
+  --var-len 10 `
+  --var-tokens "{NPC_NAME},{MAP_NAME}"
 ```
 
 #### Gettext PO File Validation Run

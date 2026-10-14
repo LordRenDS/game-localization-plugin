@@ -1,8 +1,10 @@
 # Game Localization & Text Engineering Plugin (EN/JA -> RU)
 
+[English](README.md) | [Русский](README.ru.md)
+
 [![Plugin: game-localization-plugin](https://img.shields.io/badge/Antigravity_Plugin-game--localization--plugin-4A90E2.svg)](#)
-[![Version: 1.0.0](https://img.shields.io/badge/Version-1.0.0-success.svg)](#)
-[![Tests: 102 passed](https://img.shields.io/badge/Tests-102%20passed-brightgreen.svg)](#)
+[![Version: 1.1.0](https://img.shields.io/badge/Version-1.1.0-success.svg)](#)
+[![Tests: 114 passed](https://img.shields.io/badge/Tests-114%20passed-brightgreen.svg)](#)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](#)
 
 A professional, production-grade toolkit for Google Antigravity designed for high-fidelity game localization from **Japanese (JA)** and **English (EN)** into **Russian (RU)**.
@@ -144,15 +146,17 @@ The plugin includes three standalone Python utilities located in [scripts/](file
 Validates that translated files maintain complete tag parity with source files, adhere to line length and line count limits, and conform to Russian typography standards.
 
 ```bash
-# Basic validation with default thresholds (max 40 chars/line, max 4 lines/box)
+# Basic validation with default thresholds (max 40 chars/line, max 4 lines/box, var-len 8)
 python scripts/l10n_validator.py --source source.json --target translated.json
 
-# Custom layout budget constraints
+# Custom layout budget constraints with variable token budgeting
 python scripts/l10n_validator.py \
   --source en_script.po \
   --target ru_script.po \
   --max-len 36 \
-  --max-lines 3
+  --max-lines 3 \
+  --var-len 10 \
+  --var-tokens "{NPC_NAME},{MAP_NAME}"
 
 # JSON report output (useful for CI/CD pipelines)
 python scripts/l10n_validator.py --source src.json --target dst.json --json
@@ -163,6 +167,8 @@ python scripts/l10n_validator.py --source src.json --target dst.json --json
 - `--target`, `-t`: Path to target translated file.
 - `--max-len`, `-l`: Maximum characters per line (default: `40`).
 - `--max-lines`, `-m`: Maximum lines per dialogue box (default: `4`).
+- `--var-len`: Nominal character reservation for dynamic variable tokens like `{HERO_NAME}` (default: `8`). Set to `0` to treat as zero-width.
+- `--var-tokens`: Comma-separated custom tokens to add to variable tokens (e.g. `"{NPC_NAME},{LOCATION}"`).
 - `--json`: Output full report as structured JSON.
 
 ---
@@ -286,26 +292,31 @@ python scripts/version_diff.py \
 
 ## Synergy with ROM Hacking
 
-This plugin works in direct conjunction with ROM hacking toolkits, such as the `nds-romhacking-plugin`:
+This plugin works in direct architectural synergy with ROM hacking toolkits, such as **`nds-romhacking-plugin` v1.1.0+**:
 
 ```
 ┌─────────────────────────────────┐       ┌──────────────────────────────────────┐
-│     nds-romhacking-plugin       │       │       game-localization-plugin       │
+│  nds-romhacking-plugin v1.1.0+  │       │       game-localization-plugin       │
 │                                 │       │                                      │
-│  1. Extract NitroFS / archives  │       │                                      │
-│  2. Decompress LZ77 streams     │       │                                      │
-│  3. Dump bytecode scripts       │ ────> │  4. Align multi-version scripts      │
+│  1. Extract NitroFS / overlays  │       │                                      │
+│  2. Generic container parser    │       │                                      │
+│     (arbitrary lang_count 1..N, │       │                                      │
+│      dynamic \x02 / \x00 delim) │       │                                      │
+│  3. Dump dialogue bytecode/JSON │ ────> │  4. Align multi-version scripts      │
 │                                 │       │  5. Curate terminology & glossaries  │
 │                                 │       │  6. Literary translation (JA/EN->RU) │
 │                                 │       │  7. Polish dialogue cadence & rhythm │
 │                                 │ <──── │  8. Validate tag integrity & layout  │
-│  9. Reinsert bytecode scripts   │       │                                      │
-│ 10. Rebuild NFTR font widths    │       │                                      │
+│  9. Reinsert localized entries  │       │     (DEFAULT_VARIABLE_TOKENS budget  │
+│ 10. Rebuild NFTR font widths    │       │      nominal 8 chars / 30-48px)      │
 │ 11. Repack ROM & sign integrity │       │                                      │
 └─────────────────────────────────┘       └──────────────────────────────────────┘
 ```
 
-The localization plugin guarantees that when scripts return to the ROM hacking pipeline for binary reinsertion, all engine opcodes, line count limits, and pointer references are 100% intact, preventing crashes and visual glitches on real hardware and emulators.
+### Key Integration Points:
+- **Generic Binary Text Containers**: `nds-romhacking-plugin` v1.1.0+ supports arbitrary language counts (`lang_count`, from 1 to $N$) and dynamic text delimiters (`\x02` or `\x00`) across diverse commercial NDS titles. `game-localization-plugin` ingests and outputs structured JSON/PO/TXT preserving exact entry keys and multi-language parity.
+- **Dynamic Variable Token Budgeting**: Both plugins share the `DEFAULT_VARIABLE_TOKENS` standard (`{HERO_NAME}`, `{PLAYER_NAME}`, `{ITEM_NAME}`, etc.). Rather than stripping tokens as zero-width, the localization validator budgets nominal character envelopes (`--var-len 8`), perfectly aligning with the ROM hacking plugin's proportional NFTR font advance metrics (`DEFAULT_HERO_NAME_WIDTH_PX = 30-48px`) to eliminate runtime dialogue clipping.
+- **Zero Bytecode Degradation**: When translated scripts return to the ROM hacking pipeline for binary reinsertion, all engine opcodes, line count limits, and pointer tables remain 100% intact, preventing VM crashes and softlocks on real hardware and emulators.
 
 ---
 
@@ -323,7 +334,7 @@ To run the complete test suite:
 pytest tests/ -v
 ```
 
-All 102 unit tests execute in under 1 second.
+All 114 unit tests execute in under 1 second.
 
 ---
 

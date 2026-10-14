@@ -108,8 +108,55 @@ def check_russian_typography(text: str) -> list[str]:
     return errors
 
 
+DEFAULT_VARIABLE_TOKENS: set[str] = {
+    "{HERO_NAME}", "{PLAYER_NAME}", "{TARGET}", "{VARIABLE}",
+    "{ITEM_NAME}", "{LOCATION}", "{VALUE}", "{NUMBER}",
+    "{HERO}", "{PLAYER}", "{VAR_1}", "{VAR_2}", "{NAME 1}", "{NAME 2}",
+}
+
+
+def strip_non_visual_tags(
+    text: str,
+    var_token_len: int = 8,
+    custom_var_tokens: set[str] | None = None,
+) -> str:
+    """Strip non-visual formatting tags and reserve budget for variable tokens.
+
+    Tokens matching variable tokens are replaced with `var_token_len` characters
+    (e.g. 'X' * var_token_len), while all non-visual control codes/opcodes
+    ({COLOR:1}, {WAIT:10}, etc.) are stripped to ''.
+    """
+    var_tokens = set(DEFAULT_VARIABLE_TOKENS)
+    if custom_var_tokens:
+        var_tokens.update(custom_var_tokens)
+
+    replacement = "X" * max(0, var_token_len)
+
+    escaped_var_tokens = sorted(
+        (re.escape(tok) for tok in var_tokens if tok),
+        key=len,
+        reverse=True,
+    )
+    if escaped_var_tokens:
+        var_pattern = "|".join(escaped_var_tokens)
+        pattern = rf"({var_pattern})|(\{{[^{{}}]*\}}|\[[^\[\]]*\])"
+    else:
+        pattern = r"\{[^{}]*\}|\[[^\[\]]*\]"
+
+    def replace_match(match: re.Match[str]) -> str:
+        if match.group(1):
+            return replacement
+        return ""
+
+    return re.sub(pattern, replace_match, text)
+
+
 def check_layout_budget(
-    text: str, max_line_len: int = 40, max_lines: int = 4
+    text: str,
+    max_line_len: int = 40,
+    max_lines: int = 4,
+    var_token_len: int = 8,
+    custom_var_tokens: set[str] | None = None,
 ) -> list[str]:
     """Check line length limits and line count budgets per dialogue page."""
     errors: list[str] = []
@@ -133,8 +180,10 @@ def check_layout_budget(
 
         # Check character length per line
         for line_idx, line in enumerate(lines, 1):
-            # Strip non-visual formatting tags like {COLOR 1}, {WAIT 2}, [ITEM 1]
-            visible_line = re.sub(r"\{[^{}]*\}|\[[^\[\]]*\]", "", line)
+            # Strip non-visual formatting tags and reserve variable tokens
+            visible_line = strip_non_visual_tags(
+                line, var_token_len=var_token_len, custom_var_tokens=custom_var_tokens
+            )
             if len(visible_line) > max_line_len:
                 line_info = f"Page {page_idx} Line {line_idx}" if len(pages) > 1 else f"Line {line_idx}"
                 errors.append(
@@ -145,7 +194,12 @@ def check_layout_budget(
 
 
 def validate_line(
-    src: str, dst: str, max_line_len: int = 40, max_lines: int = 4
+    src: str,
+    dst: str,
+    max_line_len: int = 40,
+    max_lines: int = 4,
+    var_token_len: int = 8,
+    custom_var_tokens: set[str] | None = None,
 ) -> list[str]:
     """Validate a single source and translated line pair.
 
@@ -212,7 +266,13 @@ def validate_line(
                 errors.append(f"Unexpected extra tag in target: '{tag}'")
 
     # 3. Layout budget
-    layout_errors = check_layout_budget(dst, max_line_len=max_line_len, max_lines=max_lines)
+    layout_errors = check_layout_budget(
+        dst,
+        max_line_len=max_line_len,
+        max_lines=max_lines,
+        var_token_len=var_token_len,
+        custom_var_tokens=custom_var_tokens,
+    )
     errors.extend(layout_errors)
 
     # 4. Russian typography
@@ -292,7 +352,12 @@ def parse_po_file(content: str) -> list[dict[str, Any]]:
 
 
 def validate_file(
-    src_path: str, dst_path: str, max_line_len: int = 40, max_lines: int = 4
+    src_path: str,
+    dst_path: str,
+    max_line_len: int = 40,
+    max_lines: int = 4,
+    var_token_len: int = 8,
+    custom_var_tokens: set[str] | None = None,
 ) -> dict[str, Any]:
     """Validate translation integrity between two files (JSON, PO, or text)."""
     src_p = Path(src_path)
@@ -346,7 +411,12 @@ def validate_file(
                 # Check singular msgstr
                 if "msgstr" in d_entry:
                     line_errs = validate_line(
-                        msgid, d_entry["msgstr"], max_line_len=max_line_len, max_lines=max_lines
+                        msgid,
+                        d_entry["msgstr"],
+                        max_line_len=max_line_len,
+                        max_lines=max_lines,
+                        var_token_len=var_token_len,
+                        custom_var_tokens=custom_var_tokens,
                     )
                     if line_errs:
                         errors_dict[msgid] = line_errs
@@ -357,7 +427,12 @@ def validate_file(
                         key = f"{msgid}[{p_idx}]"
                         src_text = s_entry.get("msgid_plural") or msgid
                         line_errs = validate_line(
-                            src_text, p_val, max_line_len=max_line_len, max_lines=max_lines
+                            src_text,
+                            p_val,
+                            max_line_len=max_line_len,
+                            max_lines=max_lines,
+                            var_token_len=var_token_len,
+                            custom_var_tokens=custom_var_tokens,
                         )
                         if line_errs:
                             errors_dict[key] = line_errs
@@ -378,7 +453,12 @@ def validate_file(
 
                 if "msgstr" in entry:
                     line_errs = validate_line(
-                        msgid, entry["msgstr"], max_line_len=max_line_len, max_lines=max_lines
+                        msgid,
+                        entry["msgstr"],
+                        max_line_len=max_line_len,
+                        max_lines=max_lines,
+                        var_token_len=var_token_len,
+                        custom_var_tokens=custom_var_tokens,
                     )
                     entry_errs.extend(line_errs)
 
@@ -386,7 +466,12 @@ def validate_file(
                     for p_idx, p_val in sorted(entry["msgstr_plural"].items()):
                         src_text = entry.get("msgid_plural") or msgid
                         line_errs = validate_line(
-                            src_text, p_val, max_line_len=max_line_len, max_lines=max_lines
+                            src_text,
+                            p_val,
+                            max_line_len=max_line_len,
+                            max_lines=max_lines,
+                            var_token_len=var_token_len,
+                            custom_var_tokens=custom_var_tokens,
                         )
                         entry_errs.extend(line_errs)
 
@@ -411,6 +496,8 @@ def validate_file(
                     str(dst_val),
                     max_line_len=max_line_len,
                     max_lines=max_lines,
+                    var_token_len=var_token_len,
+                    custom_var_tokens=custom_var_tokens,
                 )
                 if line_errs:
                     errors_dict[key] = line_errs
@@ -433,6 +520,8 @@ def validate_file(
                         str(dst_data[i]),
                         max_line_len=max_line_len,
                         max_lines=max_lines,
+                        var_token_len=var_token_len,
+                        custom_var_tokens=custom_var_tokens,
                     )
                     if line_errs:
                         errors_dict[key] = line_errs
@@ -455,6 +544,8 @@ def validate_file(
                 dst_lines[idx],
                 max_line_len=max_line_len,
                 max_lines=max_lines,
+                var_token_len=var_token_len,
+                custom_var_tokens=custom_var_tokens,
             )
             if line_errs:
                 errors_dict[line_id] = line_errs
@@ -473,8 +564,8 @@ def validate_file(
     }
 
 
-def main() -> None:
-    """CLI entrypoint for game text tag and layout validator."""
+def create_parser() -> argparse.ArgumentParser:
+    """Create the argument parser for the l10n validator CLI."""
     parser = argparse.ArgumentParser(
         description="Game text tag and layout validator (enforces tag parity, layout limits, and typography)."
     )
@@ -499,13 +590,38 @@ def main() -> None:
         help="Maximum allowed lines per text box (default: 4)",
     )
     parser.add_argument(
+        "--var-len",
+        type=int,
+        default=8,
+        help="Nominal character reservation for dynamic variable tokens like {HERO_NAME} (default: 8). Set to 0 to treat as zero-width.",
+    )
+    parser.add_argument(
+        "--var-tokens",
+        default=None,
+        help="Comma-separated custom tokens to add to variable tokens (e.g. '{USER},{NPC}')",
+    )
+    parser.add_argument(
         "--json", action="store_true", help="Output validation report in JSON format"
     )
+    return parser
 
+
+def main() -> None:
+    """CLI entrypoint for game text tag and layout validator."""
+    parser = create_parser()
     args = parser.parse_args()
 
+    custom_tokens: set[str] | None = None
+    if args.var_tokens:
+        custom_tokens = {t.strip() for t in args.var_tokens.split(",") if t.strip()}
+
     result = validate_file(
-        args.source, args.target, max_line_len=args.max_len, max_lines=args.max_lines
+        args.source,
+        args.target,
+        max_line_len=args.max_len,
+        max_lines=args.max_lines,
+        var_token_len=args.var_len,
+        custom_var_tokens=custom_tokens,
     )
 
     if args.json:
