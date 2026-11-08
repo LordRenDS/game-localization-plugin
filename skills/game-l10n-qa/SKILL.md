@@ -55,6 +55,19 @@ When NOT to use:
   │   - Identical key sets in JSON dictionaries            │
   │   - msgid / msgstr pair completeness in Gettext PO     │
   │   - Identical line counts in plain text script dumps   │
+  └───────────────────────────┬────────────────────────────┘
+                              │
+  ┌───────────────────────────▼────────────────────────────┐
+  │ Pillar 5: Reduplications & Hanging Punctuation         │
+  │   - Accidental duplicate words ('день день', 'в в')     │
+  │   - Line-starting hanging punctuation (!?, », ), ,)    │
+  └───────────────────────────┬────────────────────────────┘
+                              │
+  ┌───────────────────────────▼────────────────────────────┐
+  │ Pillar 6: Speaker Gender Agreement & Context Grammar   │
+  │   - Automated check via speaker_gender_map.json        │
+  │   - Feminine past-tense verbs in male dialogue         │
+  │   - Masculine 1st-person phrasing in female dialogue   │
   └────────────────────────────────────────────────────────┘
 ```
 
@@ -103,16 +116,31 @@ Get-Content -Path "data/script_ru.json" -TotalCount 10
 ```
 
 ### Step 2: Automated Validation Execution
-Run `scripts/l10n_validator.py` with appropriate budget constraints:
+
+> [!TIP]
+> **Universal CLI Execution Path**: When running from an arbitrary project repository, invoke the validator using its global path:
+> `python "$env:USERPROFILE\.gemini\config\plugins\game-localization-plugin\scripts\l10n_validator.py"`
+
+Run `l10n_validator.py` with appropriate budget constraints:
 
 #### Standard Validation Run
 ```powershell
-python scripts/l10n_validator.py `
+python "$env:USERPROFILE\.gemini\config\plugins\game-localization-plugin\scripts\l10n_validator.py" `
   --source "data/dialogue_en.json" `
   --target "data/dialogue_ru.json" `
   --max-len 36 `
   --max-lines 4 `
   --var-len 8
+```
+
+#### Validation with Speaker Gender Map
+```powershell
+python "$env:USERPROFILE\.gemini\config\plugins\game-localization-plugin\scripts\l10n_validator.py" `
+  --source "data/dialogue_en.json" `
+  --target "data/dialogue_ru.json" `
+  --speakers "data/speaker_gender_map.json" `
+  --max-len 36 `
+  --max-lines 4
 ```
 
 #### Validation with Custom Variable Tokens

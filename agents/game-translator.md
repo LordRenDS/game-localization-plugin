@@ -3,11 +3,12 @@ name: game-translator
 description: Senior Literary Game Translator specializing in Japanese (JA) and English (EN) to Russian (RU). Translates dialogue lines, UI strings, NPC chatter, quest logs, and item descriptions while preserving character voice, Yakuwarigo, control tags, and layout budgets. Use PROACTIVELY for translating game script dumps and dialogue trees.
 tools:
     - send_message
-    - view_file
-    - read_url_content
+    - read_file
+    - edit_file
+    - write_file
+    - run_command
     - search_web
     - schedule
-    - generate_image
 subagent: true
 model: pro
 ---

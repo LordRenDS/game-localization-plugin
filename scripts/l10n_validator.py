@@ -115,6 +115,85 @@ DEFAULT_VARIABLE_TOKENS: set[str] = {
 }
 
 
+# Russian feminine past-tense verb endings commonly misattributed in MT dialogue
+FEMININE_VERBS_REGEX = re.compile(
+    r"\b(видела|сказала|пошла|думала|хотела|забыла|слышала|решила|пришла|смогла|знала|нашла|была|ждала|поняла|взяла|отдала|просила|спросила|почувствовала|узнала|надеялась|боялась)\b",
+    re.IGNORECASE,
+)
+
+# Russian masculine past-tense verbs used in 1st person ("я видел", "я пошёл")
+MASCULINE_1ST_PERSON_VERBS_REGEX = re.compile(
+    r"\b(?:я|меня)\s+(?:видел|сказал|пошёл|думал|хотел|забыл|слышал|решил|пришёл|смог|знал|нашёл|был|ждал|понял|взял|отдал|просил|спросил|почувствовал|узнал|надеялся|боялся)\b|\b(?:видел|сказал|пошёл|думал|хотел|забыл|слышал|решил|пришёл|смог|знал|нашёл|был|ждал|понял|взял|отдал|просил|спросил)\s+я\b",
+    re.IGNORECASE,
+)
+
+# Hanging punctuation marks at start of line
+HANGING_PUNCT_REGEX = re.compile(
+    r"(?:\r?\n|\{LINE\})[ \t]*([?!»\),;:]{1,3}|\.{2,3})(?=[ \t\wа-яА-ЯёЁ]|$)"
+)
+
+# Allowed intentional Russian reduplications
+ALLOWED_REDUPLICATIONS: frozenset[str] = frozenset({
+    "чуть", "еле", "да", "нет", "ох", "ах", "ха", "тук", "кап", "точь",
+})
+
+
+def check_word_repetitions(text: str) -> list[str]:
+    """Check for unintentional consecutive duplicate words (e.g. 'день день', 'это это')."""
+    errors: list[str] = []
+    # Replace subpage breaks and newlines with space/line splits
+    normalized = text.replace("\\n", "\n").replace("{PAGE}", "\n").replace("{LINE}", "\n")
+    for line in normalized.splitlines():
+        clean_line = TAG_REGEX.sub(" ", line)
+        for m in re.finditer(r"\b([а-яёА-ЯЁa-zA-Z]{2,})\s+\1\b", clean_line, re.IGNORECASE):
+            w = m.group(1).lower()
+            if w in ALLOWED_REDUPLICATIONS:
+                continue
+            errors.append(f"Unintentional word repetition: '{m.group(0)}'")
+
+    return errors
+
+
+def check_hanging_punctuation(text: str) -> list[str]:
+    """Check for lines starting with hanging or orphaned punctuation marks."""
+    errors: list[str] = []
+    normalized = text.replace("\\n", "\n")
+    for m in HANGING_PUNCT_REGEX.finditer(normalized):
+        punct = m.group(1)
+        if punct in ("...", "…"):
+            preceding = normalized[: m.start()].rstrip(" \t")
+            if not preceding or preceding.endswith(
+                (".", "!", "?", "…", ":", "»", '"', "'", ">", "}")
+            ):
+                continue
+            after = normalized[m.end() :].lstrip(" \t")
+            if after and (after[0].isupper() or after[0] in ("«", "—")):
+                continue
+        errors.append(f"Line starts with hanging punctuation: '{punct}'")
+    return errors
+
+
+def check_speaker_gender_agreement(text: str, gender: str) -> list[str]:
+    """Verify past-tense verb agreement according to designated speaker gender."""
+    errors: list[str] = []
+    g = gender.strip().lower()
+
+    if g in ("m", "male", "муж", "м"):
+        for fm in FEMININE_VERBS_REGEX.finditer(text):
+            verb = fm.group(0)
+            errors.append(
+                f"Gender mismatch: Designated male speaker dialogue contains feminine verb '{verb}'"
+            )
+    elif g in ("f", "female", "жен", "ж"):
+        for mm in MASCULINE_1ST_PERSON_VERBS_REGEX.finditer(text):
+            phrase = mm.group(0)
+            errors.append(
+                f"Gender mismatch: Designated female speaker dialogue contains masculine 1st-person phrasing '{phrase}'"
+            )
+
+    return errors
+
+
 def strip_non_visual_tags(
     text: str,
     var_token_len: int = 8,
@@ -200,6 +279,9 @@ def validate_line(
     max_lines: int = 4,
     var_token_len: int = 8,
     custom_var_tokens: set[str] | None = None,
+    check_repetitions: bool = True,
+    check_hanging_punct: bool = True,
+    speaker_gender: str | None = None,
 ) -> list[str]:
     """Validate a single source and translated line pair.
 
@@ -278,6 +360,21 @@ def validate_line(
     # 4. Russian typography
     typography_errors = check_russian_typography(dst)
     errors.extend(typography_errors)
+
+    # 5. Word repetitions
+    if check_repetitions:
+        rep_errors = check_word_repetitions(dst)
+        errors.extend(rep_errors)
+
+    # 6. Hanging punctuation
+    if check_hanging_punct:
+        hang_errors = check_hanging_punctuation(dst)
+        errors.extend(hang_errors)
+
+    # 7. Speaker gender agreement
+    if speaker_gender:
+        gender_errors = check_speaker_gender_agreement(dst, speaker_gender)
+        errors.extend(gender_errors)
 
     return errors
 
@@ -358,6 +455,10 @@ def validate_file(
     max_lines: int = 4,
     var_token_len: int = 8,
     custom_var_tokens: set[str] | None = None,
+    check_repetitions: bool = True,
+    check_hanging_punct: bool = True,
+    speakers_map: dict[str, str] | None = None,
+    speakers_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Validate translation integrity between two files (JSON, PO, or text)."""
     src_p = Path(src_path)
@@ -365,6 +466,15 @@ def validate_file(
 
     errors_dict: dict[str, list[str]] = {}
     total_entries = 0
+
+    active_speakers = dict(speakers_map or {})
+    if speakers_path:
+        sp = Path(speakers_path)
+        if sp.is_file():
+            try:
+                active_speakers.update(json.loads(sp.read_text(encoding="utf-8")))
+            except Exception:
+                pass
 
     if not src_p.exists():
         return {
@@ -410,6 +520,7 @@ def validate_file(
                 d_entry = dst_dict[msgid]
                 # Check singular msgstr
                 if "msgstr" in d_entry:
+                    sp_gender = active_speakers.get(msgid)
                     line_errs = validate_line(
                         msgid,
                         d_entry["msgstr"],
@@ -417,6 +528,9 @@ def validate_file(
                         max_lines=max_lines,
                         var_token_len=var_token_len,
                         custom_var_tokens=custom_var_tokens,
+                        check_repetitions=check_repetitions,
+                        check_hanging_punct=check_hanging_punct,
+                        speaker_gender=sp_gender,
                     )
                     if line_errs:
                         errors_dict[msgid] = line_errs
@@ -452,6 +566,7 @@ def validate_file(
                 entry_errs: list[str] = []
 
                 if "msgstr" in entry:
+                    sp_gender = active_speakers.get(msgid)
                     line_errs = validate_line(
                         msgid,
                         entry["msgstr"],
@@ -459,6 +574,9 @@ def validate_file(
                         max_lines=max_lines,
                         var_token_len=var_token_len,
                         custom_var_tokens=custom_var_tokens,
+                        check_repetitions=check_repetitions,
+                        check_hanging_punct=check_hanging_punct,
+                        speaker_gender=sp_gender,
                     )
                     entry_errs.extend(line_errs)
 
@@ -491,6 +609,7 @@ def validate_file(
                     continue
 
                 dst_val = dst_data[key]
+                sp_gender = active_speakers.get(key)
                 line_errs = validate_line(
                     str(src_val),
                     str(dst_val),
@@ -498,6 +617,9 @@ def validate_file(
                     max_lines=max_lines,
                     var_token_len=var_token_len,
                     custom_var_tokens=custom_var_tokens,
+                    check_repetitions=check_repetitions,
+                    check_hanging_punct=check_hanging_punct,
+                    speaker_gender=sp_gender,
                 )
                 if line_errs:
                     errors_dict[key] = line_errs
@@ -515,13 +637,38 @@ def validate_file(
                 elif i >= len(src_data):
                     errors_dict[key] = [f"Unexpected extra entry at index {i}"]
                 else:
+                    s_item = src_data[i]
+                    d_item = dst_data[i]
+                    if isinstance(s_item, dict) and isinstance(d_item, dict):
+                        key = f"id_{s_item.get('id', i)}"
+                        s_text = s_item.get("original_en") or s_item.get("source") or s_item.get("text") or ""
+                        d_text = d_item.get("translation") or d_item.get("target") or d_item.get("text") or ""
+                    else:
+                        s_text = str(s_item)
+                        d_text = str(d_item)
+
+                    sp_gender = None
+                    if isinstance(d_item, dict):
+                        speaker_val = d_item.get("speaker") or (s_item.get("speaker") if isinstance(s_item, dict) else None)
+                        sp_gender = d_item.get("gender") or d_item.get("speaker_gender")
+                        if not sp_gender and speaker_val and speaker_val in active_speakers:
+                            sp_gender = active_speakers[speaker_val]
+                        if not sp_gender and key in active_speakers:
+                            sp_gender = active_speakers[key]
+                        eid = str(d_item.get("id")) if d_item.get("id") is not None else None
+                        if not sp_gender and eid and eid in active_speakers:
+                            sp_gender = active_speakers[eid]
+
                     line_errs = validate_line(
-                        str(src_data[i]),
-                        str(dst_data[i]),
+                        s_text,
+                        d_text,
                         max_line_len=max_line_len,
                         max_lines=max_lines,
                         var_token_len=var_token_len,
                         custom_var_tokens=custom_var_tokens,
+                        check_repetitions=check_repetitions,
+                        check_hanging_punct=check_hanging_punct,
+                        speaker_gender=sp_gender,
                     )
                     if line_errs:
                         errors_dict[key] = line_errs
@@ -539,6 +686,7 @@ def validate_file(
 
         for idx in range(min(len(src_lines), len(dst_lines))):
             line_id = f"line_{idx + 1}"
+            sp_gender = active_speakers.get(line_id)
             line_errs = validate_line(
                 src_lines[idx],
                 dst_lines[idx],
@@ -546,6 +694,9 @@ def validate_file(
                 max_lines=max_lines,
                 var_token_len=var_token_len,
                 custom_var_tokens=custom_var_tokens,
+                check_repetitions=check_repetitions,
+                check_hanging_punct=check_hanging_punct,
+                speaker_gender=sp_gender,
             )
             if line_errs:
                 errors_dict[line_id] = line_errs
@@ -601,6 +752,21 @@ def create_parser() -> argparse.ArgumentParser:
         help="Comma-separated custom tokens to add to variable tokens (e.g. '{USER},{NPC}')",
     )
     parser.add_argument(
+        "--no-repetitions",
+        action="store_true",
+        help="Disable checking for consecutive duplicate words",
+    )
+    parser.add_argument(
+        "--no-hanging-punct",
+        action="store_true",
+        help="Disable checking for lines starting with hanging punctuation",
+    )
+    parser.add_argument(
+        "--speakers",
+        default=None,
+        help="Path to JSON file mapping speaker names or IDs to gender ('m'/'f')",
+    )
+    parser.add_argument(
         "--json", action="store_true", help="Output validation report in JSON format"
     )
     return parser
@@ -608,6 +774,12 @@ def create_parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     """CLI entrypoint for game text tag and layout validator."""
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        except Exception:
+            pass
+
     parser = create_parser()
     args = parser.parse_args()
 
@@ -622,6 +794,9 @@ def main() -> None:
         max_lines=args.max_lines,
         var_token_len=args.var_len,
         custom_var_tokens=custom_tokens,
+        check_repetitions=not args.no_repetitions,
+        check_hanging_punct=not args.no_hanging_punct,
+        speakers_path=args.speakers,
     )
 
     if args.json:

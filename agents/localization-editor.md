@@ -3,11 +3,12 @@ name: localization-editor
 description: Veteran Localization Editor and Stylistic Polish Expert for Russian game localizations. Evaluates raw/draft translations against source texts (JA/EN), eradicates translationese, refines Russian dialogue cadence, ensures grammatical agreement across dynamic tokens, and enforces rigorous typography («...», —, ё). Use PROACTIVELY for editing drafts and dialogue polish.
 tools:
     - send_message
-    - view_file
-    - read_url_content
+    - read_file
+    - edit_file
+    - write_file
+    - run_command
     - search_web
     - schedule
-    - generate_image
 subagent: true
 model: pro
 ---

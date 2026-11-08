@@ -546,3 +546,87 @@ class TestCliVariableTokens:
         assert proc2.returncode != 0
         assert "FAIL" in proc2.stdout or "FAIL" in proc2.stderr
 
+
+
+
+class TestGeneralLocalizationEnhancements:
+    """Tests for word repetition detection, hanging punctuation, and speaker gender checks."""
+
+    def test_word_repetitions_detected(self):
+        src = "Today is a great day!"
+        # 'день день' should be flagged
+        dst_err = "Сегодня был прекрасный день день!"
+        errs = validate_line(src, dst_err)
+        assert any("word repetition" in e.lower() and "день день" in e for e in errs)
+
+        # 'чуть-чуть' is hyphenated and allowed
+        dst_ok = "Мы продвинулись чуть-чуть вперёд."
+        assert not any("word repetition" in e.lower() for e in validate_line(src, dst_ok))
+
+        # 'да да' is in allowed reduplications
+        dst_da = "Да да, именно так."
+        assert not any("word repetition" in e.lower() for e in validate_line(src, dst_da))
+
+    def test_hanging_punctuation_detected(self):
+        src = "Did you hear that?\nReally?!"
+        # Line starting with !?
+        dst_hang = "Ты слышал это?\n!?Неужели?"
+        errs = validate_line(src, dst_hang)
+        assert any("hanging punctuation" in e.lower() and "!?" in e for e in errs)
+
+        # Line starting with closing quote
+        dst_quote = "Она сказала: «Привет\n» и ушла."
+        errs_quote = validate_line(src, dst_quote)
+        assert any("hanging punctuation" in e.lower() and "»" in e for e in errs_quote)
+
+        # Dialogue dash is valid
+        dst_dash = "— Привет!\n— И тебе привет!"
+        assert not any("hanging punctuation" in e.lower() for e in validate_line(src, dst_dash))
+
+        # Hesitation ellipsis is valid
+        dst_dots = "...Что ты имеешь в виду?"
+        assert not any("hanging punctuation" in e.lower() for e in validate_line(src, dst_dots))
+
+    def test_speaker_gender_agreement(self):
+        src = "I went to the castle and found the key."
+
+        # Male speaker with feminine verb -> violation
+        dst_fem_on_male = "Я пошла в замок и нашла ключ."
+        errs_m = validate_line(src, dst_fem_on_male, speaker_gender="m")
+        assert any("gender mismatch" in e.lower() and "пошла" in e for e in errs_m)
+
+        # Female speaker with masculine 1st-person phrasing -> violation
+        dst_masc_on_fem = "Я пошёл в замок и нашёл ключ."
+        errs_f = validate_line(src, dst_masc_on_fem, speaker_gender="f")
+        assert any("gender mismatch" in e.lower() and "я пошёл" in e.lower() for e in errs_f)
+
+        # Correct gender agreement -> clean
+        dst_clean_f = "Я пошла в замок и нашла ключ."
+        assert not any("gender mismatch" in e.lower() for e in validate_line(src, dst_clean_f, speaker_gender="f"))
+
+    def test_file_validation_with_speakers_map(self, tmp_path):
+        src_data = [
+            {"id": "1", "speaker": "Crono", "text": "I was waiting for you."},
+            {"id": "2", "speaker": "Marle", "text": "I was waiting for you too."},
+        ]
+        # Crono has feminine verb, Marle has masculine verb
+        dst_data = [
+            {"id": "1", "speaker": "Crono", "text": "Я ждала тебя."},
+            {"id": "2", "speaker": "Marle", "text": "Я ждал тебя тоже."},
+        ]
+
+        speakers = {"Crono": "m", "Marle": "f"}
+
+        src_file = tmp_path / "src.json"
+        dst_file = tmp_path / "dst.json"
+        speakers_file = tmp_path / "speakers.json"
+
+        src_file.write_text(json.dumps(src_data), encoding="utf-8")
+        dst_file.write_text(json.dumps(dst_data), encoding="utf-8")
+        speakers_file.write_text(json.dumps(speakers), encoding="utf-8")
+
+        res = validate_file(src_file, dst_file, speakers_path=speakers_file)
+        assert not res["valid"]
+        assert len(res["errors"]) == 2
+        assert any("ждала" in e.lower() for e in res["errors"]["id_1"])
+        assert any("ждал" in e.lower() for e in res["errors"]["id_2"])

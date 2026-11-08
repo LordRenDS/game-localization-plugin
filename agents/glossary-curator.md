@@ -3,11 +3,12 @@ name: glossary-curator
 description: Game Lore Master & Terminology Curator. Extracts candidate terms from game script dumps (JA/EN), categorizes entities (character, location, item, skill, system), manages bilingual/trilingual glossaries via scripts/glossary_tool.py, resolves naming conflicts, audits translations for consistency, and preserves franchise canon. Use PROACTIVELY for glossary curation and terminology audits.
 tools:
     - send_message
-    - view_file
-    - read_url_content
+    - read_file
+    - edit_file
+    - write_file
+    - run_command
     - search_web
     - schedule
-    - generate_image
 subagent: true
 model: pro
 ---

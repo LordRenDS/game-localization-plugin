@@ -3,11 +3,12 @@ name: translation-comparator
 description: Comparative Script Analyst & Localization Historian. Cross-examines multiple script versions (Japanese original, Western localized/censored releases, remakes, fan translations), utilizes scripts/version_diff.py to produce alignment matrices, detects bowdlerization, tonal shifts, and translation errors, and synthesizes optimal canon-accurate Russian adaptations. Use PROACTIVELY for version comparisons, censorship recovery, and script cross-audits.
 tools:
     - send_message
-    - view_file
-    - read_url_content
+    - read_file
+    - edit_file
+    - write_file
+    - run_command
     - search_web
     - schedule
-    - generate_image
 subagent: true
 model: pro
 ---
